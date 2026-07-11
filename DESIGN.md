@@ -67,55 +67,20 @@ Append-only (never overwrite) — the history is preserved. The user can review 
 - **The mixed toolchain** (Triton for exploration, CUDA for max-perf) — the user's kernel work uses both. The extension is language-agnostic (the test command is whatever the user provides; the agent writes Triton OR CUDA per the strategy).
 - **The cost**: GLM-5.2 (via Fireworks) is a fast, cheap model — suitable for the frequent orchestrator calls (the review/guidance on every iteration). The KV caching keeps the cost low (the system prompt is cached).
 
-### GLM-5.2 vs Claude, Gemini, GPT — the model comparison + the weaknesses
+### GLM-5.2 — the strengths + weaknesses
 
-GLM-5.2 is the **default** orchestrator model (the user's session model), but it has known weaknesses vs the stronger models. The extension lets the user switch (`/research model`) per task. Here's the comparison:
+#### Strengths
+- Fast, cheap, good for the frequent orchestrator calls (the review/guidance on every iteration).
+- KV caching (Fireworks prefix cache) — the system prompt (≥1024 tokens) is cached → the per-call cost is low.
+- Sufficient for the orchestrator role (the review/guidance is a structured JSON analysis, not deep reasoning).
+- The user's default model (the session model) — no extra config needed.
 
-#### GLM-5.2 (via Fireworks / zai-coding)
-- **Strengths**: fast, cheap, good for the frequent orchestrator calls (the review/guidance on every iteration). KV caching (Fireworks prefix cache). Sufficient for the orchestrator role (the review/guidance is a structured JSON analysis, not deep reasoning).
-- **Weaknesses**: weaker reasoning than Claude/GPT — the review/guidance might miss nuanced failure analysis (e.g. a subtle correctness bug, a perf bottleneck that requires deep architecture knowledge). The strategy generation might be less creative (fewer novel approaches). The natural-language criteria evaluation might be less precise. The model may hallucinate metrics or misjudge the bench output.
-- **When to use**: the default (the iterative loop with many calls, low cost, fast). Good for most tasks.
-
-#### Claude (Sonnet/Opus, via Anthropic)
-- **Strengths**: strongest reasoning — better at the review/guidance (more nuanced analysis of the bench failure, deeper strategy analysis). The `cache_control` (1-hour TTL) for Anthropic — the system prompt is cached for 1 hour (fewer cache misses for long runs). Good for complex tasks ( nuanced strategy analysis, complex failure diagnosis). Less likely to hallucinate or misjudge.
-- **Weaknesses**: more expensive (the frequent orchestrator calls add up). Slower (the loop runs slower). The Haiku threshold (2048 tokens) — the system prompt needs to be ≥2048 for Haiku caching (impractical for the built-in prompt; Sonnet/Opus need ≥1024).
-- **When to use**: complex tasks ( nuanced strategy analysis, complex failure diagnosis) OR when the GLM-5.2 review/guidance is insufficient (the loop isn't converging). Switch via `/research model anthropic/claude-sonnet-...`.
-
-#### Gemini (Google)
-- **Strengths**: good reasoning, fast, competitive cost. Google's prefix caching. Large context window (good for long sessions with many iterations + a large NOTES.md). Good for the orchestrator role (balanced reasoning + speed + cost).
-- **Weaknesses**: less established for coding tasks than Claude/GPT. The strategy generation might be less coding-specific. The natural-language criteria evaluation might be less precise than Claude.
-- **When to use**: a balanced alternative (reasoning + speed + cost). Switch via `/research model google/gemini-...`.
-
-#### GPT (4/5, via OpenAI)
-- **Strengths**: strong reasoning, good at the review/guidance (better strategy analysis + failure diagnosis). OpenAI's automatic prefix caching (≥1024 tokens). Good for complex tasks. Less likely to hallucinate.
-- **Weaknesses**: more expensive (the frequent orchestrator calls). Slower. The API might have stricter rate limits. The prefix cache threshold (≥1024 tokens) — the system prompt is already ≥1024 (the expansion).
-- **When to use**: complex tasks OR when the GLM-5.2 review/guidance is insufficient. Switch via `/research model openai/gpt-...`.
-
-#### The trade-offs (the decision matrix)
-
-| | GLM-5.2 | Claude | Gemini | GPT |
-|---|---|---|---|---|
-| Cost | Lowest | High | Medium | High |
-| Speed | Fastest | Slow | Fast | Medium |
-| Reasoning | Weaker | Strongest | Good | Strong |
-| KV caching | Fireworks prefix cache | cache_control (1h TTL) | Google prefix cache | OpenAI auto (≥1024) |
-| Hallucination risk | Higher | Lower | Medium | Lower |
-| Best for | The default (iterative loop, many calls) | Complex tasks ( nuanced analysis) | Balanced | Complex tasks |
-
-#### Why GLM-5.2 as the default (despite the weaknesses)
-- The orchestrator's calls (the review/guidance) are **focused** — a stateless one-shot with a structured JSON response (the action, the message, the reasoning, the confidence). This doesn't require deep reasoning — it's a structured analysis of the bench output + a guidance message. GLM-5.2 is sufficient for this.
-- The **cost** — the loop runs many iterations (up to the budget, default 20). Each iteration = 1-2 orchestrator calls (the review/guidance + possibly the criteria eval). GLM-5.2 (via Fireworks) is the cheapest → the loop is affordable.
-- The **speed** — the loop runs quickly (GLM-5.2 is fast). The user gets the results faster.
-- The **KV caching** — the system prompt (≥1024 tokens) is cached by Fireworks → the per-call cost is low.
-- The user can **switch** to a stronger model per task (`/research model`) when the GLM-5.2 review/guidance is insufficient.
-
-#### When to switch to Claude/GPT
-- The loop isn't converging (the GLM-5.2 guidance isn't helping the agent improve).
-- The failure analysis is shallow (the GLM-5.2 review misses the root cause).
-- The task is complex ( nuanced strategy analysis, deep architecture knowledge).
-- The criteria evaluation (natural-language) is imprecise (the GLM-5.2 eval is wrong).
-- The model is hallucinating metrics or misjudging the bench output.
-- Switch via `/research model anthropic/claude-sonnet-...` OR `/research model openai/gpt-...`.
+#### Weaknesses
+- Weaker reasoning — the review/guidance might miss nuanced failure analysis (e.g. a subtle correctness bug, a perf bottleneck that requires deep architecture knowledge).
+- The strategy generation might be less creative (fewer novel approaches).
+- The natural-language criteria evaluation might be less precise.
+- The model may hallucinate metrics or misjudge the bench output.
+- The agent can sometimes talk the orchestrator into "done" (the anti-gaming rule in the system prompt mitigates this, but a weaker model is more susceptible).
 
 ### Why the interactive setup (infer + wizard)?
 
